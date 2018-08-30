@@ -5,7 +5,6 @@ libck2_root = '../../libck2'
 env.Append(CPPPATH = libck2_root + '/src')
 env.Append(LIBPATH = libck2_root + '/build')
 
-#sources = Glob('*.cc')
-sources = ['main.cc']
+sources = Glob('*.cc')
 
 env.Program('MapScaler', sources, LIBS=['ck2', 'boost_filesystem-mt', 'boost_system-mt'])
