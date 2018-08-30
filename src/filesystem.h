@@ -17,7 +17,7 @@
 
 
 namespace fs = boost::filesystem;
-using unique_file_ptr = std::unique_ptr< std::FILE, int (*)(std::FILE*) >;
+using unique_fptr = std::unique_ptr< std::FILE, int (*)(std::FILE*) >;
 
 
 struct PathError : public Error {
