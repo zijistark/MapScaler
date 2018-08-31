@@ -19,7 +19,7 @@
 #include "common.h"
 #include "filesystem.h"
 
-constexpr char const* VERSION = "0.0.2";
+constexpr char const* VERSION = "0.0.3";
 
 constexpr char const* GAME_PATH = "C:/Program Files (x86)/Steam/steamapps/common/Crusader Kings II";
 constexpr char const* MOD_PATH = "C:/git/SWMH-BETA/SWMH";
@@ -30,16 +30,25 @@ constexpr char const* PROVBMP_TEST_OUTPUT_PATH = "C:/git/MapScaler/tmp/provinces
 using namespace std;
 using ck2::prov_id_t;
 using ck2::BGR;
+using ck2::FLError;
+using ck2::FLoc;
+using ck2::FLErrorStaticFactory;
+using ck2::BMPHeader;
 
 
-static const pair<BGR, prov_id_t> ImpassableColorMap = {{0,0,0}, numeric_limits<prov_id_t>::max()};
-static const pair<BGR, prov_id_t> OceanColorMap = {{255,255,255}, numeric_limits<prov_id_t>::max() - 1};
+static const pair<BGR, prov_id_t> ImpassableColorMap = {
+  {0, 0, 0},
+  numeric_limits<prov_id_t>::max()
+};
+
+static const pair<BGR, prov_id_t> OceanColorMap = {
+  {255, 255, 255},
+  numeric_limits<prov_id_t>::max() - 1
+};
 
 
 int main()
 {
-  typedef unsigned int uint;
-
   try
   {
     ck2::VFS vfs{ fs::path(GAME_PATH) };
@@ -60,12 +69,37 @@ int main()
     color2id_map.emplace(ImpassableColorMap);
     color2id_map.emplace(OceanColorMap);
 
-    SegmentMap<prov_id_t, uint16_t> seg_map(bmp.width(), bmp.height(), color2id_map, "provinces bitmap");
-    bmp.foreach_segment([&](BGR c, uint x1, uint x2, uint y) { seg_map.add_segment(c, x1, x2, y); });
+    SegmentMap<prov_id_t, uint16_t> seg_map(bmp.width(), bmp.height());
+
+    bmp.foreach_segment(
+      [&](BGR color, uint start_x, uint end_x, uint y)
+      {
+        assert(y < bmp.height());
+        assert(end_x <= bmp.width());
+        assert(end_x > start_x); // end_x should always be one past the actual final pixel
+
+        if (auto it = color2id_map.find(color); it != color2id_map.end())
+        {
+          seg_map[y].emplace_back(it->second, end_x);
+        }
+        else if (end_x - 1 > start_x)
+        {
+          throw FLError(FLoc(bmp.path()),
+                        "Stray color of RGB({}, {}, {}) in provinces bitmap at pixels (x:{} to {}, y:{})",
+                        color.red(), color.green(), color.blue(), start_x, end_x - 1, y);
+        }
+        else
+        {
+          throw FLError(FLoc(bmp.path()),
+                        "Stray color of RGB({}, {}, {}) in provinces bitmap at pixel (x:{}, y:{})",
+                        color.red(), color.green(), color.blue(), start_x, y);
+        }
+      }
+    );
 
     // Prepare output provinces.bmp (no actual scaling yet) ... //
 
-    ck2::BMPHeader prov_bmp_hdr;
+    BMPHeader prov_bmp_hdr;
     memset(&prov_bmp_hdr, 0, sizeof(prov_bmp_hdr));
 
     uint n_rows = bmp.height(), n_cols = bmp.width();
@@ -73,7 +107,7 @@ int main()
     auto bmp_sz = row_sz * n_rows;
     auto file_sz = static_cast<uint>(sizeof(prov_bmp_hdr) + bmp_sz);
 
-    prov_bmp_hdr.magic = ck2::BMPHeader::MAGIC;
+    prov_bmp_hdr.magic = BMPHeader::MAGIC;
     prov_bmp_hdr.n_file_size = file_sz;
     prov_bmp_hdr.n_bitmap_offset = sizeof(prov_bmp_hdr);
     prov_bmp_hdr.n_header_size = 40;
@@ -83,7 +117,7 @@ int main()
     prov_bmp_hdr.n_bpp = 24;
     prov_bmp_hdr.n_bitmap_size = bmp_sz;
 
-    const auto ferr = ck2::FLErrorStaticFactory(ck2::FLoc(PROVBMP_TEST_OUTPUT_PATH));
+    const auto ferr = FLErrorStaticFactory(FLoc(PROVBMP_TEST_OUTPUT_PATH));
 
     unique_fptr ufp( std::fopen(PROVBMP_TEST_OUTPUT_PATH, "wb"), std::fclose );
 

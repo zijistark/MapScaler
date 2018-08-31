@@ -14,4 +14,7 @@
 #define NAMESPACE_MAPSCALER_END }
 
 
+typedef unsigned int uint;
+
+
 #endif // MAPSCALER_COMMON_H
